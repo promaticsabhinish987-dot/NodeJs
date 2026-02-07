@@ -180,12 +180,62 @@ extremely thin
 
 
 
+## Application controller 
+
+
+```ts
+// controller/ApplicationController.ts
+export abstract class ApplicationController {
+  protected ok(res, data) {
+    res.status(200).json({
+      success: true,
+      data
+    });
+  }
+
+  protected created(res, data) {
+    res.status(201).json({
+      success: true,
+      data
+    });
+  }
+
+  protected fail(res, error: Error) {
+    res.status(400).json({
+      success: false,
+      message: error.message
+    });
+  }
+}
+
+
+
+//controller simplify
+
+// controller/UserController.ts
+export class UserController extends ApplicationController {
+  constructor(private userService: UserService) {
+    super();
+  }
+
+  create(req, res) {
+    try {
+      const user = this.userService.createUser(req.body);
+      this.created(res, user);
+    } catch (e) {
+      this.fail(res, e);
+    }
+  }
+}
+
+
+
+```
 
 
 
 
-
-
+Note :- all types of controller pattern we use , just to simplify the Controller.
 
 
 
