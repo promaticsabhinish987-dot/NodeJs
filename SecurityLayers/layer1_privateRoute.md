@@ -142,11 +142,70 @@ Access-Control-Allow-Headers: Content-Type, Authorization
 
 # headers for server and frontend
 
+CORS package :- is just a middleware that writes header.
+
+A (same domain) :- no cors needed.
+
+Case B — Frontend & Backend Different Domains (JWT Cookie Auth)
 
 
+```ts
+
+app.use(cors({
+  origin: "https://app.com",
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}))
 
 
+fetch("https://api.com/profile", {
+  credentials: "include"
+})
 
+res.cookie("token", token, {
+  httpOnly: true,
+  secure: true,
+  sameSite: "none"
+})
+
+```
+
+Cookie will not work.
+
+```ts
+origin: "*",
+credentials: true
+```
+
+browser adds header cross origin only we request to other origin.
+
+#### ✅ Use origin allowlist function
+
+to write cors for production
+
+
+```ts
+
+const allowedOrigins = ["https://app.com"];
+
+app.use(cors({
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true); //run if no origin is provided, or the provided origin is not from the list of origins.
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true
+}));
+
+```
+Cors does not protect from cUrl , postman , and server to server attack.It garantees that only browser acess is not possible.
+A browser-level permission system that controls which frontend origins are allowed to read backend responses.
+
+
+# all about header and cors
 
 
 
