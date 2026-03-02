@@ -171,13 +171,33 @@ const login = async (req, res) => {
 
 ```
 
+```ts
+app.use(express.json({
+  strict: true
+}));
+
+//not allow or give 400 bad request if send other data then json
+```
+Internally 
+
+```ts
+if (typeof parsedBody !== "object")
+   throw 400 error
+```
+It parse only json data not multipart data.
+
+## Security layers
 
 
-
-
-
-
-
+| Layer                | Responsibility             |
+| -------------------- | -------------------------- |
+| HTTPS                | Transport security         |
+| CORS                 | Browser origin control     |
+| express.json strict  | Body format enforcement    |
+| Validation (Joi/Zod) | Field-level validation     |
+| Sanitization         | Remove operators           |
+| DB schema            | Data structure enforcement |
+| Auth middleware      | Identity verification      |
 
 
 
