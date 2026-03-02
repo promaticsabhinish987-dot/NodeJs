@@ -170,6 +170,16 @@ app.use((err, req, res, next) => {
 
 ```
 
+## better production pattern (Create Async Wrapper)
 
 
+```ts
+const asyncHandler = (fn) => (req, res, next) =>
+  Promise.resolve(fn(req, res, next)).catch(next);
+
+router.get("/", asyncHandler(async (req, res) => {
+  const users = await User.find().lean();
+  res.status(200).json({ success: true, data: users });
+}));
+```
 
