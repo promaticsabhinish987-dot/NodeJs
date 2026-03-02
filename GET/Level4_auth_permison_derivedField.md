@@ -1,5 +1,9 @@
 # Auth + Permissions + Derived Fields
 
+What to show
+
+Get post only if: Public OR user is owner OR user follows owner
+
 ```ts
 router.get("/secure/posts/:id", authMiddleware, async (req, res, next) => {
   try {
@@ -52,6 +56,123 @@ router.get("/secure/posts/:id", authMiddleware, async (req, res, next) => {
 });
 ```
 
+
+1. Secure post fetch ?
+
+A post is A resource that must be conditionally visible depending on identity and relationships.
+
+
+Total = 3 DB round trips
+
+This works but break at scale.
+
+
+### Core Production Principles
+
+1. Authentication ≠ Authorization
+
+Your authMiddleware handles identity.
+Your route handles permission logic.  // authorization is at business level
+
+2. Never Trust Client-Derived State
+
+```ts
+
+"isLiked": true
+
+```
+
+get it from db
+
+
+
+## Production-Grade Aggregation Version
+
+
+```ts
+Post.aggregate([
+  { $match: { _id: new ObjectId(id) } },
+
+  // Join author
+  {
+    $lookup: {
+      from: "users",
+      localField: "author",
+      foreignField: "_id",
+      as: "author"
+    }
+  },
+  { $unwind: "$author" },
+
+  // Join follow relationship
+  {
+    $lookup: {
+      from: "follows",
+      let: { authorId: "$author._id" },
+      pipeline: [
+        {
+          $match: {
+            $expr: {
+              $and: [
+                { $eq: ["$follower", new ObjectId(userId)] },
+                { $eq: ["$following", "$$authorId"] }
+              ]
+            }
+          }
+        }
+      ],
+      as: "followStatus"
+    }
+  },
+
+  // Join like relationship
+  {
+    $lookup: {
+      from: "likes",
+      let: { postId: "$_id" },
+      pipeline: [
+        {
+          $match: {
+            $expr: {
+              $and: [
+                { $eq: ["$user", new ObjectId(userId)] },
+                { $eq: ["$post", "$$postId"] }
+              ]
+            }
+          }
+        }
+      ],
+      as: "likeStatus"
+    }
+  },
+
+  // Derived fields
+  {
+    $addFields: {
+      isLiked: { $gt: [{ $size: "$likeStatus" }, 0] },
+      isFollowing: { $gt: [{ $size: "$followStatus" }, 0] }
+    }
+  },
+
+  // Permission filter
+  {
+    $match: {
+      $or: [
+        { isPublic: true },
+        { "author._id": new ObjectId(userId) },
+        { isFollowing: true }
+      ]
+    }
+  },
+
+  {
+    $project: {
+      followStatus: 0,
+      likeStatus: 0
+    }
+  }
+])
+```
 
 
 
