@@ -87,7 +87,7 @@ no changes added to commit (use "git add" and/or "git commit -a")
 
 And if you fail you can not commit.
 
-
+Note :- if you will node add .gitignore it will show in git status all the nodemodule files.
 
 ### ======================== basic setup end ===========================
 
