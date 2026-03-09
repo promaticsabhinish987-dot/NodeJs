@@ -486,7 +486,39 @@ FEATURE_FLAG: bool({ default: false })
 
 
 
+## 8 create  a custom dotenv
 
+```ts
+
+const fs = require("fs")
+
+function loadDotEnv(filePath) {
+
+  const content = fs.readFileSync(filePath, "utf-8")
+
+  const lines = content.split("\n")
+  console.log(lines);
+
+  for (let line of lines) {
+
+    line = line.trim()
+
+    // ignore empty lines and comments
+    if (!line || line.startsWith("#")) continue
+
+    const [key, value] = line.split("=")
+
+    if (key && value) {
+      console.log(key,value)
+      process.env[key.trim()] = value.trim()
+    }
+  }
+}
+
+loadDotEnv(".env")
+
+// module.exports = loadDotEnv
+```
 
 
 
