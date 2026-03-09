@@ -411,6 +411,64 @@ Solution: validate at startup.
 npm install envalid
 ```
 
+src/config/env.js
+
+```ts
+const dotenv = require("dotenv");
+const { cleanEnv, str, num } = require("envalid");
+
+dotenv.config();
+
+const env = cleanEnv(process.env, {
+  PORT: num({ default: 3000 }), // should be a number
+  DB_HOST: str(), //should be a string
+  JWT_SECRET: str(),
+  NODE_ENV: str({
+    choices: ["development", "production", "test"] // enum
+  })
+});
+
+module.exports = env;
+```
+
+
+```ts
+//server.js
+const env = require("./src/config/env");
+
+const express = require("express");
+
+const app = express();
+
+app.listen(env.PORT, () => {
+  console.log(`Server running on port ${env.PORT}`);
+});
+
+```
+
+Validators it provide.
+
+| Validator | Type    |
+| --------- | ------- |
+| `str()`   | string  |
+| `num()`   | number  |
+| `bool()`  | boolean |
+| `url()`   | URL     |
+| `email()` | email   |
+| `json()`  | JSON    |
+
+
+
+```ts
+
+const { bool, url } = require("envalid");
+
+API_URL: url(),
+FEATURE_FLAG: bool({ default: false })
+
+```
+
+
 ## 7. Best Practices for Environment Variables
 
 1. Never store secrets directly in code.
