@@ -521,9 +521,121 @@ loadDotEnv(".env")
 ```
 
 
+## Validator
 
+```ts
+const { 
+  cleanEnv,
+  str,
+  num,
+  bool,
+  email,
+  url,
+  port,
+  json,
+  host
+} = require("envalid")
 
+const env = cleanEnv(process.env, {
 
+  // Environment mode
+  NODE_ENV: str({
+    choices: ["development", "production", "test"],
+    desc: "Application runtime environment",
+    example: "development"
+  }),
+
+  // Server configuration
+  PORT: port({
+    default: 3000,
+    desc: "HTTP server port"
+  }),
+
+  HOST: host({
+    default: "localhost",
+    desc: "Server hostname"
+  }),
+
+  // Database
+  DATABASE_URL: url({
+    desc: "MongoDB connection string",
+    example: "mongodb://localhost:27017/app"
+  }),
+
+  // Cache
+  REDIS_URL: url({
+    requiredWhen: env => env.NODE_ENV === "production",
+    desc: "Redis connection URL"
+  }),
+
+  // Authentication
+  JWT_SECRET: str({
+    desc: "JWT signing secret"
+  }),
+
+  // Feature flags
+  DEBUG_MODE: bool({
+    default: false,
+    desc: "Enable debug logging"
+  }),
+
+  // Admin contact
+  ADMIN_EMAIL: email({
+    desc: "Administrator email address"
+  }),
+
+  // Rate limiting
+  RATE_LIMIT_PER_SECOND: num({
+    default: 100,
+    desc: "Max requests per second"
+  }),
+
+  // Timeout configuration
+  REQUEST_TIMEOUT_MS: num({
+    default: 5000,
+    desc: "Request timeout in milliseconds"
+  }),
+
+  // Feature configuration (JSON)
+  FEATURE_FLAGS: json({
+    default: {
+      enablePayments: false,
+      enableChat: true
+    },
+    desc: "Feature toggle configuration"
+  }),
+
+  // Optional development default
+  DEV_PORT: port({
+    devDefault: 4000,
+    desc: "Port used only in development if not provided"
+  }),
+
+})
+
+module.exports = env
+```
+
+```
+NODE_ENV=development
+
+PORT=5000
+HOST=localhost
+
+DATABASE_URL=mongodb://localhost:27017/app
+REDIS_URL=redis://localhost:6379
+
+JWT_SECRET=mySuperSecretKey
+
+DEBUG_MODE=true
+
+ADMIN_EMAIL=admin@example.com
+
+RATE_LIMIT_PER_SECOND=200
+REQUEST_TIMEOUT_MS=8000
+
+FEATURE_FLAGS={"enablePayments":true,"enableChat":true}
+```
 
 
 
