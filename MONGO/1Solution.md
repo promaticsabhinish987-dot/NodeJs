@@ -1,4 +1,282 @@
-# ====================== Solution =========================
+# ====================== Solution Start =========================
+
+**Architecture goal:**
+
+```
+posts collection
+ ├─ authorId (reference)
+ └─ authorSnapshot (embedded partial data)
+```
+
+**Benefits**
+
+```
+1. query read ( we have author data inside the post thats why it will take 1req = 1 query , work for list of post also)
+
+2. full user data still accessible ( if we want to access the full user data for a post , we can also access that)
+
+3. async update propagation ( your profile will be updates, sunchronously , but the post author data will be updatd in background)
+
+```
+
+### 1. Project Structure
+
+```
+project
+│
+├── models
+│   ├── User.js
+│   └── Post.js
+│
+├── services
+│   └── userUpdateService.js
+│
+├── routes
+│   ├── postRoutes.js
+│   └── userRoutes.js
+│
+├── workers
+│   └── postUpdateWorker.js
+│
+├── queue.js
+└── server.js
+```
+
+### 2. User Model
+
+```ts
+// models/User.js
+
+const mongoose = require("mongoose")
+
+const UserSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  avatar: String,
+  email: String
+})
+
+module.exports = mongoose.model("User", UserSchema)
+```
+
+### 3. Post Model (Embedding + Reference)
+
+```ts
+// models/Post.js
+
+const mongoose = require("mongoose")
+
+const PostSchema = new mongoose.Schema({
+  title: String,
+  content: String,
+
+  authorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    index: true
+  },
+
+  authorSnapshot: {
+    name: String,
+    avatar: String
+  }
+
+}, { timestamps: true })
+
+module.exports = mongoose.model("Post", PostSchema)
+```
+
+### 4. Create Post (Store Snapshot) (while creating post store snamshot of user)
+
+```ts
+// routes/postRoutes.js
+
+const express = require("express")
+const router = express.Router()
+
+const Post = require("../models/Post")
+const User = require("../models/User")
+
+router.post("/posts", async (req, res) => {
+
+  const { title, content, authorId } = req.body
+
+  const user = await User.findById(authorId)
+
+  const post = await Post.create({
+    title,
+    content,
+    authorId,
+
+    authorSnapshot: {
+      name: user.name,
+      avatar: user.avatar
+    }
+  })
+
+  res.json(post)
+})
+
+module.exports = router
+```
+
+### 5. Fast Read API (1 Query)
+
+Reads use embedded snapshot.
+
+
+```ts
+router.get("/posts/:id", async (req, res) => {
+
+  const post = await Post.findById(req.params.id)
+
+  res.json(post)
+
+})
+```
+Only one db operation for post or list of post.
+
+### 6. Get Full User Data When Needed
+
+```ts
+router.get("/posts/:id/full", async (req, res) => {
+
+  const post = await Post.findById(req.params.id)
+
+  const user = await User.findById(post.authorId)
+
+  res.json({
+    post,
+    user
+  })
+
+})
+```
+
+like clicking to detail, or more...
+
+
+### 7. Update User Profile
+
+
+```ts
+// routes/userRoutes.js
+
+const queue = require("../queue")
+const User = require("../models/User")
+
+router.put("/users/:id", async (req, res) => {
+
+  const { name, avatar } = req.body
+
+  const user = await User.findByIdAndUpdate(
+    req.params.id,
+    { name, avatar },
+    { new: true }
+  )
+
+  // push background job
+  await queue.add("update-post-author", {
+    userId: user._id,
+    name: user.name,
+    avatar: user.avatar
+  })
+
+  res.json(user)
+
+})
+```
+
+### 8. Queue Setup
+
+This is the best place to use queue, its for async task.
+
+```ts
+// queue.js redish or bulma
+
+const { Queue } = require("bullmq")
+
+const connection = {
+  host: "127.0.0.1",
+  port: 6379
+}
+
+const queue = new Queue("post-update", { connection })
+
+module.exports = queue
+```
+
+### 9. Background Worker
+
+Worker updates embedded snapshots.
+
+
+```ts
+// workers/postUpdateWorker.js
+
+const { Worker } = require("bullmq")
+const mongoose = require("mongoose")
+const Post = require("../models/Post")
+
+const connection = {
+  host: "127.0.0.1",
+  port: 6379
+}
+
+const worker = new Worker("post-update", async job => {
+
+  const { userId, name, avatar } = job.data
+
+  await Post.updateMany(
+    { authorId: userId },
+    {
+      $set: {
+        "authorSnapshot.name": name,
+        "authorSnapshot.avatar": avatar
+      }
+    }
+  )
+
+}, { connection })
+```
+
+
+### 10. Server setup
+
+```ts
+// server.js
+
+const express = require("express")
+const mongoose = require("mongoose")
+
+const postRoutes = require("./routes/postRoutes")
+const userRoutes = require("./routes/userRoutes")
+
+const app = express()
+
+app.use(express.json())
+
+mongoose.connect("mongodb://localhost:27017/blog")
+
+app.use(postRoutes)
+app.use(userRoutes)
+
+app.listen(3000, () => {
+  console.log("Server running")
+})
+```
+
+
+| Operation   | DB Queries       |
+| ----------- | ---------------- |
+| Create Post | 2                |
+| Read Post   | 1                |
+| User Update | 1 + async update |
+
+
+Now this can work for any no of users.
+
+
+# ====================== Solution End =========================
 
 # 1 Solution
 
