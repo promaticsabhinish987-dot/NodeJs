@@ -37,6 +37,31 @@ Sort = O(N log N)
 Scan = O(N)
 ```
 
+Mongodb does
+
+
+But MongoDB Already Solves This With Index
+
+With an index:
+
+```
+{ score: -1, playerId: 1 }
+```
+
+Query:
+
+```
+db.players.find().sort({score:-1}).limit(10)
+```
+
+MongoDB simply:
+
+B+Tree → read first 10 entries
+
+Complexity:
+```
+O(log N + K)
+```
 
 ## ===================================
 
