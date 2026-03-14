@@ -327,13 +327,43 @@ db.users.find({ age: 25 })
 ```
 
 ```
-
+Query Engine
+     │
+     ▼
+Index File (index-3.wt)
+     │
+     ▼
+Find key 25
+     │
+     ▼
+Return RID 1001
+     │
+     ▼
+Collection File (collection-7.wt)
+     │
+     ▼
+Fetch BSON document
 ```
 
 
+So the index does not store documents, it stores pointers to documents.
+
+#### But both index and collection file store data in B-tree so how index is fast and collection is slow?
+
+collection is also fast if you search with _id, but whne you have to search with gamil and other data, its linear in collection but good with index.
+
+Collections store documents, while indexes store keys that point to documents.
+
+gmail - indexing means store _id of that document, in index file correspond to that id created with email.Which is a unique indexid.
+
+and it also stored in , sorted manner, indexes are sorted by default. sorted by index filed.
 
 
-
+1. if you create index for name.
+2. if create a different file for managing index
+3. it generate a unique id for index which represent that name , and correcpond with the document id.
+4. so whenever you create a document for that collection , index file also updated, with that document _id.
+5. And indexes are also sorted, thats why when we search with field whch is indexed, mongodb converts that name into index and search in index file and get the document it and then go to that document in collection and return. which takes binary tree traversal not linear.
 
 
 
