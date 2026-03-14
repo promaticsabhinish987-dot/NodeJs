@@ -70,9 +70,14 @@ Understanding indexes requires understanding tree search structures.
 ### 2. The Physical Structure of MongoDB Index
 
 
+it stores it in, B+tree and does searching fast.
+Compound index are stored in sequence , unique id is gererated by combining
 
+```
+index = name + email + pincode
+```
 
-
+You can get sorted data if you use prefix search only else if you try to get email and sort it, it will use sorting.
 
 
 
