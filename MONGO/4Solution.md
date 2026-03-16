@@ -1,5 +1,100 @@
 ## 4. Preventing Duplicate Payments
 
+
+
+## =========== Solution start ===================
+
+Idempotency Key + Unique Index + Transaction + Majority Write Concern
+
+
+```ts
+// Database schema (payments collection)
+
+{
+  _id: ObjectId,
+  userId: ObjectId,
+  orderId: ObjectId,
+  amount: Number,
+  status: "pending | success | failed",
+  idempotencyKey: String,
+  createdAt: Date
+}
+```
+
+Unique index
+
+```ts
+db.payments.createIndex(
+  { idempotencyKey: 1 },
+  { unique: true }
+)
+```
+Transaction-Based Payment Flow
+
+```ts
+async function processPayment(client, paymentData) {
+
+  const session = client.startSession();
+
+  try {
+
+    session.startTransaction({
+      writeConcern: { w: "majority" }
+    });
+
+    const payments = client.db().collection("payments");
+    const orders = client.db().collection("orders");
+
+    await payments.insertOne(
+      {
+        userId: paymentData.userId,
+        orderId: paymentData.orderId,
+        amount: paymentData.amount,
+        idempotencyKey: paymentData.idempotencyKey,
+        status: "success",
+        createdAt: new Date()
+      },
+      { session }
+    );
+
+    await orders.updateOne(
+      { _id: paymentData.orderId },
+      { $set: { status: "paid" } },
+      { session }
+    );
+
+    await session.commitTransaction();
+
+    return { success: true };
+
+  } catch (err) {
+
+    await session.abortTransaction();
+
+    if (err.code === 11000) {
+
+      return {
+        success: true,
+        message: "Payment already processed"
+      };
+
+    }
+
+    throw err;
+
+  } finally {
+
+    await session.endSession();
+
+  }
+
+}
+```
+
+
+
+## =========== Solution end =====================
+
 Preventing duplicate payments is a classic idempotency problem in distributed systems. The objective is:
 
  - **_No matter how many times the request is sent, only one payment should be created._**
@@ -61,8 +156,321 @@ db.payments.createIndex(
 ```
 This will first check the index if already created, it will not create it again ang give duplicate key error.
 
+Even if two API requests arrive simultaneously:
 
-### ================= Index key generation Start ========================
+```ts
+Request 1 → insert success
+Request 2 → duplicate index violation
+```
+Only one payment is stored.
+
+You must have to handle the duplicate error gracefully.
+
+```ts
+try {
+
+ await db.collection("payments").insertOne({
+   userId: 1,
+   orderId: 101,
+   amount: 500
+ })
+
+} catch(err){
+
+ if(err.code === 11000){
+   console.log("Payment already processed")
+ }
+
+}
+```
+
+Now repeated requests produce the same logical result.
+
+##### Knowledge gap
+
+Why we cant not use it in production. for unique payment.
+Because payment does not work with only one document, it follow a step like
+Reduce the money from wallet, decrease inventory, and more which is a transaction, payment is a process of multiple steps, and all must be fulfilled, or all must be failed.
+If you are not following a rollback sytem , if money deducted but payment is not created there might be inconsistency.
+
+
+### 4. Second Layer: Transactions
+
+Why do we need transactions?
+
+Because payment systems rarely perform a single write.
+
+Typical workflow:
+
+
+```
+1 create payment record
+2 update order status
+3 reduce wallet balance
+4 create ledger entry
+```
+
+Without transactions:
+
+```
+payment inserted
+server crash
+order not updated
+```
+
+Now the system is **inconsistent**.
+
+It should be consistent. So what we can do to make it consistent.
+
+
+#### Mongodb **transaction**
+
+MongoDB allows atomic multi-document operations.
+Transactions let you execute multiple operations in isolation and potentially undo all the operations if one of them fails.
+
+Used to trat multiple operation as one unit of task, and work as binary operation , like 0 or 1.
+
+MongoDB transactions run inside a session.
+
+#### Transaction Lifecycle (4 phase)
+
+
+
+A MongoDB transaction has 4 phases.
+
+1. Start session
+
+```
+session = client.startSession()
+```
+2. Start transaction
+
+```
+session.startTransaction()
+```
+3. Perform operations
+
+All queries must include:
+
+```
+{ session }
+```
+
+4. Commit / Abort
+
+```
+session.commitTransaction()
+```
+or
+```
+session.abortTransaction()
+```
+Note :- mongodb transaction runs in seccion. If any step fail it abort or rollback.
+
+
+Example
+
+```ts
+const session = client.startSession();
+
+try {
+
+  session.startTransaction();
+
+  await db.collection("accounts").updateOne(
+    { userId: "A" },
+    { $inc: { balance: -100 } },
+    { session }
+  );
+
+  await db.collection("accounts").updateOne(
+    { userId: "B" },
+    { $inc: { balance: 100 } },
+    { session }
+  );
+
+  await session.commitTransaction();
+
+} catch (error) {
+
+  await session.abortTransaction();
+
+} finally {
+
+  session.endSession();
+
+}
+```
+Will give gurantee
+
+```
+all operations succeed
+OR
+all operations rollback
+```
+#### Other things to know, transection uses ACID properties
+
+| Property    | Meaning                                 |
+| ----------- | --------------------------------------- |
+| Atomicity   | All operations succeed or none          |
+| Consistency | Database rules remain valid             |
+| Isolation   | Concurrent transactions don't interfere |
+| Durability  | Data survives crashes                   |
+
+
+Further deep gaps:
+
+- How MongoDB uses snapshot isolation
+
+- How two-phase commit works in distributed clusters
+
+
+its like github, a transection stores all thing temporary in staging area like gir add . , and it commits at once, if commit pass its sucesss and if commit failt it will show failure.
+
+#### Knowledge gap
+now we can create a transection for payment, but where it can fail?
+
+Even if MongoDB inserts the document, we must ensure the data is safely replicated.
+
+### 5. Third Layer: Write Concern
+
+When should MongoDB tell the client "write successful"?
+
+| Option                           | Meaning               |
+| -------------------------------- | --------------------- |
+| Immediately after primary writes | Fast but less durable |
+| After replicas confirm           | Slower but safer      |
+
+Write Concern controls this behavior.
+
+Defination :- Write Concern defines the level of acknowledgment MongoDB requires before confirming a write operation as successful.
+
+In other words:
+
+```
+It specifies how many nodes must confirm the write before the client receives a success response.
+
+or
+
+How many nodes must confirm the write
+before the operation is considered successful
+```
+
+This is critical in replica set environments where data is replicated across multiple nodes.
+
+
+```ts
+db.payments.insertOne(
+   doc,
+   { writeConcern: { w: "majority" } }
+)
+```
+
+
+
+Knowledge Gap
+
+You should understand:
+
+Replication internals
+
+Questions:
+
+- How does MongoDB replicate operations via oplog?
+
+- What is primary election?
+
+- What happens to writes during failover?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## ================== write concern Start =========================
+
+Note :- For multi-document transactions, you set the write concern at the transaction level, not at the individual operation level. Do not explicitly set the write concern for individual write operations in a transaction.
+Replica sets and sharded clusters support setting a global default write concern.
+
+### Write Concern Specification
+
+
+```
+{ w: <value>, j: <boolean>, wtimeout: <number> }
+
+
+
+{
+  writeConcern: {
+    w: <value>,
+    j: <boolean>,
+    wtimeout: <number>
+  }
+}
+```
+
+w :- Defines you want acknowledgement or not, with doc it, when you write, means you will wait for it or not.(1 if you want 0 if not acknowledgement)
+j :- journal , defines that , we create a todo for the work that we are going to do because mongodb operation is slow ,and if in between , if mongodb shut down, the data will flush by default and if j is true , it will remember the task and retry when mongodb restart. (if you include it the process will be slow)
+wtimeout :- when you have to give the response to the client, in ms.
+
+Default w== 1
+
+- Primary node acknowledges the write.
+
+- Replication happens asynchronously.
+
+| Write Concern  | Speed    | Durability | Typical Use         |
+| -------------- | -------- | ---------- | ------------------- |
+| `w:0`          | Fastest  | Lowest     | logs, metrics       |
+| `w:1`          | Fast     | Medium     | normal app writes   |
+| `w:2` / number | Moderate | Higher     | replicated systems  |
+| `w:"majority"` | Slower   | Highest    | payments, financial |
+| `w:"tag"`      | Variable | Controlled | geo-replication     |
+
+
+MongoDB returns success only after more than half of the replica set nodes have written the operation.
+
+```
+majority = floor(total_nodes / 2) + 1
+```
+
+## ================== write concern End =========================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## ================= Index key generation Start ========================
 
 Q) how mongodb create index with given value?
 Q) does it create duplicate index?
@@ -208,7 +616,7 @@ KeyString(indexed_value) → RecordId
 KeyString(value1,value2,...) → RecordId
 ```
 
-### ================= Index key generation End ========================
+## ================= Index key generation End ========================
 
 
 
