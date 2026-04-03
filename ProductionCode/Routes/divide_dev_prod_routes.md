@@ -1,4 +1,4 @@
-## Divide the routes acc to the environment.
+# Divide the routes acc to the environment.
 
 Development routes and production routes.
 
@@ -170,12 +170,37 @@ module.exports = app;
 ```
 
 
-### What we can domore then this.
+# What we can do more then this.
 
+Mounting Sub-Routes
+```ts
+const router = require("express").Router();
 
+const authRoutes = require("./auth.route");
+const userRoutes = require("./user.route");
 
+router.use("/auth", authRoutes);
+router.use("/users", userRoutes);
 
+module.exports = router;
+```
 
+Middleware at Router Level
+
+```ts
+const router = require("express").Router();
+
+const authMiddleware = require("../middlewares/auth.middleware");
+
+// applies to ALL routes below
+router.use(authMiddleware);
+
+router.get("/", (req, res) => {
+  res.send("All users");
+});
+
+module.exports = router;
+```
 
 
 
