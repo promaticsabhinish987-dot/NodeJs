@@ -169,3 +169,193 @@ bytes sent from browser,
 
 not the server receive.
 
+
+
+# Example
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Transport Layer Example</title>
+
+  <style>
+    body{
+      font-family: Arial;
+      padding: 20px;
+    }
+
+    img{
+      width: 300px;
+      margin-top: 20px;
+      display: none;
+      border: 1px solid #ccc;
+    }
+
+    progress{
+      width: 300px;
+      height: 25px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Upload Image</h2>
+
+<input 
+  type="file" 
+  id="fileInput"
+  accept="image/png,image/jpeg"
+/>
+
+<br>
+
+<img id="preview">
+
+<br>
+
+<progress id="progressBar" value="0" max="100"></progress>
+
+<p id="status"></p>
+
+<script>
+
+const fileInput = document.getElementById("fileInput");
+const preview = document.getElementById("preview");
+const progressBar = document.getElementById("progressBar");
+const status = document.getElementById("status");
+
+fileInput.addEventListener("change", () => {
+
+  // USER SELECTED FILE
+  const file = fileInput.files[0];
+
+  if (!file) return;
+
+  // VALIDATE FORMAT
+  const allowed = [
+    "image/png",
+    "image/jpeg"
+  ];
+
+  if (!allowed.includes(file.type)) {
+
+    status.textContent = "Invalid image format";
+
+    return;
+  }
+
+  // CREATE OBJECT URL
+  const imageURL = URL.createObjectURL(file);
+
+  // PREVIEW IMAGE
+  preview.src = imageURL;
+  preview.style.display = "block";
+
+  // CREATE MULTIPART FORM DATA
+  const formData = new FormData();
+
+  formData.append("image", file);
+
+  formData.append(
+    "title",
+    "Profile Picture"
+  );
+
+  /*
+    Browser internally converts:
+
+    FormData
+        ↓
+    multipart/form-data
+        ↓
+    binary HTTP request body
+  */
+
+  // XHR FOR UPLOAD PROGRESS
+  const xhr = new XMLHttpRequest();
+
+  // PROGRESS TRACKING
+  xhr.upload.addEventListener("progress", (e) => {
+
+    if (e.lengthComputable) {
+
+      const percent =
+        (e.loaded / e.total) * 100;
+
+      progressBar.value = percent;
+
+      status.textContent =
+        percent.toFixed(2) + "% uploaded";
+
+      /*
+        e.loaded = bytes sent
+        e.total  = total bytes
+      */
+    }
+
+  });
+
+  // SUCCESS RESPONSE
+  xhr.onload = () => {
+
+    if (xhr.status === 200) {
+
+      status.textContent =
+        "Upload completed";
+
+    } else {
+
+      status.textContent =
+        "Upload failed";
+    }
+
+    // CLEAN MEMORY
+    URL.revokeObjectURL(imageURL);
+
+  };
+
+  // NETWORK ERROR
+  xhr.onerror = () => {
+
+    status.textContent =
+      "Network error";
+
+  };
+
+  // OPEN CONNECTION to server
+  xhr.open(
+    "POST",
+    "/upload"
+  );
+
+  /*
+    Browser internal transport flow:
+
+    File object
+        ↓
+    Browser reads file stream
+        ↓
+    Creates multipart body
+        ↓
+    Splits into TCP packets
+        ↓
+    Sends chunks over network
+        ↓
+    Progress events emitted
+        ↓
+    Server receives packets
+  */
+
+  // SEND REQUEST
+  xhr.send(formData);
+
+});
+
+</script>
+
+</body>
+</html>
+```
