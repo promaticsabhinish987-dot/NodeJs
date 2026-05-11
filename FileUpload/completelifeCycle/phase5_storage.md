@@ -252,6 +252,263 @@ DATABASE_URL=postgresql://postgres:password@localhost:5432/imagesdb
 use different database just to store the image or other file. 
 
 
+# Storing Binary Data in MongoDB with Mongoose
+
+There are **3 major ways** to store binary data in MongoDB:
+
+| Method        | Best For                 | Internal Storage  |
+| ------------- | ------------------------ | ----------------- |
+| `Buffer`      | small files/images       | BSON Binary field |
+| `GridFS`      | large files/videos       | chunked storage   |
+| Base64 string | almost never recommended | text string       |
+
+---
+
+# 1. Using `Buffer` (Direct Binary Storage)
+
+Best for:
+
+* profile images
+* PDFs
+* thumbnails
+* small uploads (<16MB)
+
+MongoDB BSON supports native binary types.
+
+---
+
+## Schema
+
+```js
+const mongoose = require("mongoose");
+
+const fileSchema = new mongoose.Schema({
+  filename: String,
+
+  data: Buffer,
+
+  contentType: String,
+
+  size: Number
+});
+
+module.exports = mongoose.model("File", fileSchema);
+```
+
+---
+
+# Uploading Binary Data
+
+Example with Node.js + Express + Multer.
+
+Install:
+
+```bash
+npm install express mongoose multer
+```
+
+---
+
+## Multer Memory Storage
+
+```js
+const multer = require("multer");
+
+const storage = multer.memoryStorage();
+
+const upload = multer({ storage });
+```
+
+`memoryStorage()` means:
+
+```txt
+file uploaded
+    ↓
+stored in RAM as Buffer
+    ↓
+available in req.file.buffer
+```
+
+---
+
+# Saving to MongoDB
+
+```js
+const express = require("express");
+const mongoose = require("mongoose");
+const upload = require("./upload");
+const File = require("./File");
+
+const app = express();
+
+mongoose.connect("mongodb://127.0.0.1:27017/test");
+
+app.post("/upload", upload.single("file"), async (req, res) => {
+
+  const file = await File.create({
+    filename: req.file.originalname,
+    data: req.file.buffer,
+    contentType: req.file.mimetype,
+    size: req.file.size
+  });
+
+  res.json({
+    id: file._id
+  });
+});
+
+app.listen(3000);
+```
+
+---
+
+# Retrieving Binary Data
+
+```js
+app.get("/file/:id", async (req, res) => {
+
+  const file = await File.findById(req.params.id);
+
+  res.set("Content-Type", file.contentType);
+
+  res.send(file.data);
+});
+```
+
+Browser receives raw bytes:
+
+```txt
+MongoDB BSON Binary
+        ↓
+Node Buffer
+        ↓
+HTTP Response
+        ↓
+Browser decodes bytes
+```
+
+---
+
+# What Happens Internally
+
+When you save:
+
+```js
+data: req.file.buffer
+```
+
+Internally:
+
+```txt
+File uploaded
+    ↓
+OS socket receives TCP packets
+    ↓
+Node assembles bytes
+    ↓
+Multer creates Buffer
+    ↓
+Mongoose serializes Buffer
+    ↓
+MongoDB BSON Binary type
+    ↓
+stored inside document
+```
+
+MongoDB stores binary as:
+
+```bson
+BinData(subtype, raw bytes)
+```
+
+Not as text.
+
+---
+
+# BSON Binary vs Base64
+
+## Buffer (GOOD)
+
+```js
+data: Buffer
+```
+
+Stored as raw bytes.
+
+Efficient.
+
+---
+
+## Base64 (BAD)
+
+```js
+data: "iVBORw0KGgoAAA..."
+```
+
+Problems:
+
+* 33% larger
+* extra encoding/decoding
+* memory overhead
+* slower transmission
+
+Use only when absolutely necessary.
+
+---
+
+# MongoDB Document Size Limit
+
+MongoDB document limit:
+
+```txt
+16MB per document
+```
+
+So:
+
+* small files → Buffer
+* large files → GridFS
+
+---
+
+We not need to parse the bunary data img automatically parse it in browser with content type.
+
+```html
+<img src="http://localhost:3000/image/123" />
+```
+
+browser parses it automatically.
+
+For other purpose we can manullay parse it and can create a url.
+
+
+```ts
+//download file in frontend
+
+const response = await fetch("/file/123");
+
+const blob = await response.blob();
+
+const url = URL.createObjectURL(blob);
+
+const a = document.createElement("a");
+
+a.href = url;
+
+a.download = "file.pdf";
+
+a.click();
+
+URL.revokeObjectURL(url);
+```
+
+
+## GridFS
+
+
+
+
+
 
 
 
