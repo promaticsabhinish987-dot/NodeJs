@@ -505,7 +505,9 @@ URL.revokeObjectURL(url);
 
 ## GridFS
 
-
+**How do you store and retrieve arbitrarily large streams of bytes
+inside a document database that has document size limits,
+without exhausting memory?**
 
 
 
